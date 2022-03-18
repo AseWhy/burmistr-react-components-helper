@@ -29,13 +29,16 @@ export default class DocumentLinkProvider implements vsDocumentLinkProvider<Exte
         if (matches !== null) {
             for (let propertyPath of matches) {
                 let data = getSourceData(namespace, propertyPath);
+                let start = new Position(line.lineNumber, line.text.indexOf(propertyPath));
+                let end = start.translate(0, propertyPath.length);
 
                 if (data !== null) {
-                    let start = new Position(line.lineNumber, line.text.indexOf(propertyPath));
-                    let end = start.translate(0, propertyPath.length);
-
                     links.push(new ExtendedDocumentLink(data, new Range(start, end)));
-                };
+                } else {
+                    links.push(new DocumentLink(new Range(start, end), Uri.parse("command:burmistr.add." + namespace + "?" + encodeURIComponent(JSON.stringify({
+                        property: propertyPath
+                    })))));
+                }
             }
         }
     }

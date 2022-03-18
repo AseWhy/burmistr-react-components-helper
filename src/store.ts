@@ -3,13 +3,14 @@ import { iLangData } from "./interfaces/iLangData";
 import * as namespaces from "./members/namespace";
 import { iMetadata } from "./interfaces/iMetadata";
 import { convertToCompletion, makeDocumentation } from "./utils/langData";
+import { iFileInfo } from "./interfaces/iFileInfo";
 
 export type Namespace = keyof typeof namespaces;
 
 export const store = {
     contents: {
 
-    } as Record<string, string>,
+    } as Record<string, iFileInfo>,
 
     completion: {
         [namespaces.LANG_NAMESPACE]: [
@@ -47,12 +48,21 @@ export function getSourceData(namespace: Namespace, name: string): null | iLangD
     return null;
 }
 
-export function putFileContents(path: string, contents: string) {
-    store.contents[path] = contents;
+export function putFileContents(namespace: Namespace, path: string, metadata: iMetadata, content: string) {
+    store.contents[path] = {
+        namespace,
+        path,
+        metadata,
+        content
+    };
 }
 
-export function getFileContents(path: string) {
+export function getFileInfo(path: string): iFileInfo {
     return store.contents[path];
+}
+
+export function getFilesByNamespace(namespace: Namespace): iFileInfo[] {
+    return Object.values(store.contents).filter(e => e.namespace === namespace);
 }
 
 export function flushNamespace(namespace: Namespace, file: string) {

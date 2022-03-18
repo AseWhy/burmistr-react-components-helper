@@ -3,7 +3,7 @@ import { join, isAbsolute } from "path";
 import { workspace } from "vscode";
 import { iLineData } from "./interfaces/iLineData";
 import processors from "./processors";
-import { getFileContents, Namespace, putFileContents, syncNamespace } from "./store";
+import { getFileInfo, Namespace, putFileContents, syncNamespace } from "./store";
 
 export const LANG_REGEXP = /(?<=Lang\.get\(['"]|Lang\.getDefault\(['"])([^'"]*)/g;
 export const CONF_REGEXP = /(?<=Config\.get\(['"]|Config\.getDefault\(['"])([^'"]*)/g;
@@ -70,7 +70,7 @@ export async function scanFiles(namespace: Namespace, flies: string[] = []) {
                     const contents = readed.toLocaleString();
                     const metadata = processor.process(contents, file);
                     
-                    putFileContents(file, contents);
+                    putFileContents(namespace, file, metadata, contents);
                     syncNamespace(namespace, file, metadata);
                 }
             } else {
@@ -82,7 +82,7 @@ export async function scanFiles(namespace: Namespace, flies: string[] = []) {
                         const contents = readed.toLocaleString();
                         const metadata = processor.process(contents, normalized);
 
-                        putFileContents(normalized, contents);
+                        putFileContents(namespace, normalized, metadata, contents);
                         syncNamespace(namespace, normalized, metadata);
                     }
                 }
@@ -99,7 +99,7 @@ export function extractPositionFromContents(file: string, position: number): iLi
     let line = 1;
     let last = 0;
     let current = 0;
-    let source = getFileContents(file);
+    let source = getFileInfo(file).content;
 
     if(source !== null) {
         while((current = source.indexOf("\n", last + 1)) !== -1) {

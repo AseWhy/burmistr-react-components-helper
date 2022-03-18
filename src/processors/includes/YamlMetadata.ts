@@ -1,13 +1,17 @@
 import * as YAML from "yaml";
 import { objectFlatten } from "../../support";
 import { iMetadata } from "../../interfaces/iMetadata";
-
+import * as fs from "fs/promises";
+import { Pair, Scalar, YAMLMap } from "yaml/types";
+import { findInYamlMap, putInYamlMap } from "./support";
 
 export class YamlMetadata implements iMetadata {
     private _document: YAML.Document;
+    private _path: string;
 
-    constructor(document: YAML.Document) {
+    constructor(path: string, document: YAML.Document) {
         this._document = document;
+        this._path = path;
     }
 
     public toFlatData(): Record<string, any> {
@@ -47,5 +51,30 @@ export class YamlMetadata implements iMetadata {
         }
 
         return -1;
+    }
+
+    public update(path: string, value: any): Promise<void> {
+        let points = path.split(".");
+        let buffer = this._document.contents ?? new YAMLMap();
+
+        for (let i = 0, length = points.length; i < length; i++) {
+            const current = points[i];
+
+            if(i === length - 1) {
+                putInYamlMap(buffer, current, new Scalar(value));
+            } else {
+                buffer = findInYamlMap(buffer, current)?.value;
+            }
+
+            if(buffer === null || buffer === void 0) {
+                const map = new YAMLMap();
+
+                putInYamlMap(buffer, current, map);
+
+                buffer = map;
+            }
+        }
+
+        return fs.writeFile(this._path, this._document.toString());
     }
 }

@@ -11,9 +11,9 @@ export default class RawDataProcessor extends BaseProcessor {
 
     process(source: string, path: string): iMetadata {
         if(path.endsWith(".yml") || path.endsWith(".yaml")) {
-            return new YamlMetadata(YAML.parseDocument(source));
+            return new YamlMetadata(path, YAML.parseDocument(source));
         } else {
-            return new JsonMetadata(JSON.parse(source));
+            return new JsonMetadata(path, JSON.parse(source));
         }
     }
 }

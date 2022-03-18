@@ -21,23 +21,39 @@ module.exports = require("vscode");
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.registerAddEntryCommandHandler = exports.registerScopedAddEntryCommandHandler = exports.QUICK_PICK_PROPS = exports.INPUT_PROPS = void 0;
+const path_1 = __webpack_require__(1);
 const vscode_1 = __webpack_require__(2);
 const store_1 = __webpack_require__(4);
 const support_1 = __webpack_require__(7);
-class CompletionItemProvider {
-    provideInternals(namespace, linkRange, document) {
-        if (!linkRange) {
-            return null;
+exports.INPUT_PROPS = {
+    title: "Значение свойства"
+};
+exports.QUICK_PICK_PROPS = {
+    title: "Файл свойств"
+};
+function registerScopedAddEntryCommandHandler(namespace, context) {
+    context.subscriptions.push(vscode_1.commands.registerCommand("burmistr.add." + namespace, async ({ property }) => {
+        const files = (0, store_1.getFilesByNamespace)(namespace);
+        const file = await vscode_1.window.showQuickPick(files.map(e => (0, path_1.basename)(e.path)), exports.QUICK_PICK_PROPS);
+        if (file === null || file === void 0) {
+            return;
         }
-        const text = document.getText(linkRange);
-        const completions = (0, store_1.getCompletion)(namespace, text);
-        return new vscode_1.CompletionList(completions, false);
-    }
-    provideCompletionItems(document, position, token, context) {
-        return (0, support_1.extractNotNull)(this.provideInternals("LANG_NAMESPACE", document.getWordRangeAtPosition(position, support_1.LANG_REGEXP), document), this.provideInternals("CONF_NAMESPACE", document.getWordRangeAtPosition(position, support_1.CONF_REGEXP), document));
-    }
+        const selected = files.find(current => current.path.endsWith(file));
+        if (selected === null || selected === void 0) {
+            return;
+        }
+        const value = await vscode_1.window.showInputBox(exports.INPUT_PROPS);
+        await selected.metadata.update(property, value);
+        await (0, support_1.scanFiles)(namespace, [selected.path]);
+    }));
 }
-exports["default"] = CompletionItemProvider;
+exports.registerScopedAddEntryCommandHandler = registerScopedAddEntryCommandHandler;
+function registerAddEntryCommandHandler(context) {
+    registerScopedAddEntryCommandHandler("CONF_NAMESPACE", context);
+    registerScopedAddEntryCommandHandler("LANG_NAMESPACE", context);
+}
+exports.registerAddEntryCommandHandler = registerAddEntryCommandHandler;
 
 
 /***/ }),
@@ -47,7 +63,7 @@ exports["default"] = CompletionItemProvider;
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.syncNamespace = exports.flushNamespace = exports.getFileContents = exports.putFileContents = exports.getSourceData = exports.getDocumentationSingle = exports.getCompletion = exports.store = void 0;
+exports.syncNamespace = exports.flushNamespace = exports.getFilesByNamespace = exports.getFileInfo = exports.putFileContents = exports.getSourceData = exports.getDocumentationSingle = exports.getCompletion = exports.store = void 0;
 const namespaces = __webpack_require__(5);
 const langData_1 = __webpack_require__(6);
 exports.store = {
@@ -79,14 +95,23 @@ function getSourceData(namespace, name) {
     return null;
 }
 exports.getSourceData = getSourceData;
-function putFileContents(path, contents) {
-    exports.store.contents[path] = contents;
+function putFileContents(namespace, path, metadata, content) {
+    exports.store.contents[path] = {
+        namespace,
+        path,
+        metadata,
+        content
+    };
 }
 exports.putFileContents = putFileContents;
-function getFileContents(path) {
+function getFileInfo(path) {
     return exports.store.contents[path];
 }
-exports.getFileContents = getFileContents;
+exports.getFileInfo = getFileInfo;
+function getFilesByNamespace(namespace) {
+    return Object.values(exports.store.contents).filter(e => e.namespace === namespace);
+}
+exports.getFilesByNamespace = getFilesByNamespace;
 function flushNamespace(namespace, file) {
     let exists = exports.store.completion[namespace];
     let i = exists.length;
@@ -233,7 +258,7 @@ async function scanFiles(namespace, flies = []) {
                     const readed = await fs.readFile(file);
                     const contents = readed.toLocaleString();
                     const metadata = processor.process(contents, file);
-                    (0, store_1.putFileContents)(file, contents);
+                    (0, store_1.putFileContents)(namespace, file, metadata, contents);
                     (0, store_1.syncNamespace)(namespace, file, metadata);
                 }
             }
@@ -244,7 +269,7 @@ async function scanFiles(namespace, flies = []) {
                         const readed = await fs.readFile(normalized);
                         const contents = readed.toLocaleString();
                         const metadata = processor.process(contents, normalized);
-                        (0, store_1.putFileContents)(normalized, contents);
+                        (0, store_1.putFileContents)(namespace, normalized, metadata, contents);
                         (0, store_1.syncNamespace)(namespace, normalized, metadata);
                     }
                 }
@@ -261,7 +286,7 @@ function extractPositionFromContents(file, position) {
     let line = 1;
     let last = 0;
     let current = 0;
-    let source = (0, store_1.getFileContents)(file);
+    let source = (0, store_1.getFileInfo)(file).content;
     if (source !== null) {
         while ((current = source.indexOf("\n", last + 1)) !== -1) {
             if (current > position) {
@@ -310,17 +335,17 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 const BaseProcessor_1 = __webpack_require__(11);
 const YAML = __webpack_require__(12);
 const YamlMetadata_1 = __webpack_require__(20);
-const JsonMetadata_1 = __webpack_require__(21);
+const JsonMetadata_1 = __webpack_require__(24);
 class RawDataProcessor extends BaseProcessor_1.BaseProcessor {
     canProcess(path) {
         return path.endsWith(".yaml") || path.endsWith(".yml") || path.endsWith(".json");
     }
     process(source, path) {
         if (path.endsWith(".yml") || path.endsWith(".yaml")) {
-            return new YamlMetadata_1.YamlMetadata(YAML.parseDocument(source));
+            return new YamlMetadata_1.YamlMetadata(path, YAML.parseDocument(source));
         }
         else {
-            return new JsonMetadata_1.JsonMetadata(JSON.parse(source));
+            return new JsonMetadata_1.JsonMetadata(path, JSON.parse(source));
         }
     }
 }
@@ -6972,9 +6997,13 @@ exports.warnOptionDeprecation = warnOptionDeprecation;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.YamlMetadata = void 0;
 const support_1 = __webpack_require__(7);
+const fs = __webpack_require__(8);
+const types_1 = __webpack_require__(21);
+const support_2 = __webpack_require__(23);
 class YamlMetadata {
-    constructor(document) {
+    constructor(path, document) {
         this._document = document;
+        this._path = path;
     }
     toFlatData() {
         return (0, support_1.objectFlatten)(this._document.toJSON());
@@ -7006,6 +7035,25 @@ class YamlMetadata {
         }
         return -1;
     }
+    update(path, value) {
+        let points = path.split(".");
+        let buffer = this._document.contents ?? new types_1.YAMLMap();
+        for (let i = 0, length = points.length; i < length; i++) {
+            const current = points[i];
+            if (i === length - 1) {
+                (0, support_2.putInYamlMap)(buffer, current, new types_1.Scalar(value));
+            }
+            else {
+                buffer = (0, support_2.findInYamlMap)(buffer, current)?.value;
+            }
+            if (buffer === null || buffer === void 0) {
+                const map = new types_1.YAMLMap();
+                (0, support_2.putInYamlMap)(buffer, current, map);
+                buffer = map;
+            }
+        }
+        return fs.writeFile(this._path, this._document.toString());
+    }
 }
 exports.YamlMetadata = YamlMetadata;
 
@@ -7014,14 +7062,117 @@ exports.YamlMetadata = YamlMetadata;
 /* 21 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
+const types = __webpack_require__(22)
+
+exports.binaryOptions = types.binaryOptions
+exports.boolOptions = types.boolOptions
+exports.intOptions = types.intOptions
+exports.nullOptions = types.nullOptions
+exports.strOptions = types.strOptions
+
+exports.Schema = types.Schema
+exports.Alias = types.Alias
+exports.Collection = types.Collection
+exports.Merge = types.Merge
+exports.Node = types.Node
+exports.Pair = types.Pair
+exports.Scalar = types.Scalar
+exports.YAMLMap = types.YAMLMap
+exports.YAMLSeq = types.YAMLSeq
+
+
+/***/ }),
+/* 22 */
+/***/ ((__unused_webpack_module, exports, __webpack_require__) => {
+
+"use strict";
+
+
+var resolveSeq = __webpack_require__(17);
+var Schema = __webpack_require__(18);
+__webpack_require__(15);
+__webpack_require__(19);
+
+
+
+exports.Alias = resolveSeq.Alias;
+exports.Collection = resolveSeq.Collection;
+exports.Merge = resolveSeq.Merge;
+exports.Node = resolveSeq.Node;
+exports.Pair = resolveSeq.Pair;
+exports.Scalar = resolveSeq.Scalar;
+exports.YAMLMap = resolveSeq.YAMLMap;
+exports.YAMLSeq = resolveSeq.YAMLSeq;
+exports.binaryOptions = resolveSeq.binaryOptions;
+exports.boolOptions = resolveSeq.boolOptions;
+exports.intOptions = resolveSeq.intOptions;
+exports.nullOptions = resolveSeq.nullOptions;
+exports.strOptions = resolveSeq.strOptions;
+exports.Schema = Schema.Schema;
+
+
+/***/ }),
+/* 23 */
+/***/ ((__unused_webpack_module, exports, __webpack_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.putInYamlMap = exports.findInYamlMap = void 0;
+const types_1 = __webpack_require__(21);
+function findInYamlMap(map, property) {
+    const items = map.items;
+    for (const current of items) {
+        const key = current.key;
+        if (current.key.value === property) {
+            return current;
+        }
+    }
+    return null;
+}
+exports.findInYamlMap = findInYamlMap;
+function putInYamlMap(map, property, value) {
+    map.add(new types_1.Pair(new types_1.Scalar(property), value));
+}
+exports.putInYamlMap = putInYamlMap;
+
+
+/***/ }),
+/* 24 */
+/***/ ((__unused_webpack_module, exports, __webpack_require__) => {
+
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.JsonMetadata = void 0;
+const YAML = __webpack_require__(12);
 const support_1 = __webpack_require__(7);
+const fs = __webpack_require__(8);
 class JsonMetadata {
-    constructor(document) {
+    constructor(path, document) {
         this._document = document;
+        this._path = path;
+    }
+    update(path, value) {
+        let points = path.split(".");
+        let data = this._document;
+        let buffer = data;
+        if (typeof data !== 'object') {
+            data = {};
+        }
+        for (let i = 0, length = points.length; i < length; i++) {
+            const current = points[i];
+            if (i === length - 1) {
+                buffer[current] = value;
+            }
+            else {
+                buffer = buffer[current];
+            }
+            if (buffer === null || buffer === void 0) {
+                buffer = data[current] = {};
+            }
+        }
+        return fs.writeFile(this._path, YAML.stringify(buffer));
     }
     toFlatData() {
         return (0, support_1.objectFlatten)(this._document);
@@ -7034,7 +7185,33 @@ exports.JsonMetadata = JsonMetadata;
 
 
 /***/ }),
-/* 22 */
+/* 25 */
+/***/ ((__unused_webpack_module, exports, __webpack_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+const vscode_1 = __webpack_require__(2);
+const store_1 = __webpack_require__(4);
+const support_1 = __webpack_require__(7);
+class CompletionItemProvider {
+    provideInternals(namespace, linkRange, document) {
+        if (!linkRange) {
+            return null;
+        }
+        const text = document.getText(linkRange);
+        const completions = (0, store_1.getCompletion)(namespace, text);
+        return new vscode_1.CompletionList(completions, false);
+    }
+    provideCompletionItems(document, position, token, context) {
+        return (0, support_1.extractNotNull)(this.provideInternals("LANG_NAMESPACE", document.getWordRangeAtPosition(position, support_1.LANG_REGEXP), document), this.provideInternals("CONF_NAMESPACE", document.getWordRangeAtPosition(position, support_1.CONF_REGEXP), document));
+    }
+}
+exports["default"] = CompletionItemProvider;
+
+
+/***/ }),
+/* 26 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 "use strict";
@@ -7056,12 +7233,16 @@ class DocumentLinkProvider {
         if (matches !== null) {
             for (let propertyPath of matches) {
                 let data = (0, store_1.getSourceData)(namespace, propertyPath);
+                let start = new vscode_1.Position(line.lineNumber, line.text.indexOf(propertyPath));
+                let end = start.translate(0, propertyPath.length);
                 if (data !== null) {
-                    let start = new vscode_1.Position(line.lineNumber, line.text.indexOf(propertyPath));
-                    let end = start.translate(0, propertyPath.length);
                     links.push(new ExtendedDocumentLink(data, new vscode_1.Range(start, end)));
                 }
-                ;
+                else {
+                    links.push(new vscode_1.DocumentLink(new vscode_1.Range(start, end), vscode_1.Uri.parse("command:burmistr.add." + namespace + "?" + encodeURIComponent(JSON.stringify({
+                        property: propertyPath
+                    })))));
+                }
             }
         }
     }
@@ -7090,7 +7271,7 @@ exports["default"] = DocumentLinkProvider;
 
 
 /***/ }),
-/* 23 */
+/* 27 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 "use strict";
@@ -7158,9 +7339,11 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.deactivate = exports.activate = void 0;
 const path_1 = __webpack_require__(1);
 const vscode_1 = __webpack_require__(2);
-const CompletionItemProvider_1 = __webpack_require__(3);
-const DocumentLinkProvider_1 = __webpack_require__(22);
-const HoverProvider_1 = __webpack_require__(23);
+const commands_1 = __webpack_require__(3);
+const CompletionItemProvider_1 = __webpack_require__(25);
+const DocumentLinkProvider_1 = __webpack_require__(26);
+const HoverProvider_1 = __webpack_require__(27);
+const store_1 = __webpack_require__(4);
 const support_1 = __webpack_require__(7);
 const WATCHIN_EXTS = new Set([
     ".yml",
@@ -7171,10 +7354,20 @@ function activate(context) {
     context.subscriptions.push(vscode_1.languages.registerCompletionItemProvider(['typescript', 'typescriptreact'], new CompletionItemProvider_1.default()));
     context.subscriptions.push(vscode_1.languages.registerHoverProvider(['typescript', 'typescriptreact'], new HoverProvider_1.default()));
     context.subscriptions.push(vscode_1.languages.registerDocumentLinkProvider(['typescript', 'typescriptreact'], new DocumentLinkProvider_1.default()));
+    (0, commands_1.registerAddEntryCommandHandler)(context);
     context.subscriptions.push(vscode_1.workspace.onDidSaveTextDocument((document) => {
         if (document.uri.scheme === "file" && WATCHIN_EXTS.has((0, path_1.extname)(document.fileName))) {
-            (0, support_1.scanFiles)("LANG_NAMESPACE", [document.uri.path]);
-            (0, support_1.scanFiles)("CONF_NAMESPACE", [document.uri.path]);
+            const info = (0, store_1.getFileInfo)(document.uri.path);
+            if (info !== null) {
+                switch (info.namespace) {
+                    case "LANG_NAMESPACE":
+                        (0, support_1.scanFiles)("LANG_NAMESPACE", [document.uri.path]);
+                        break;
+                    case "CONF_NAMESPACE":
+                        (0, support_1.scanFiles)("CONF_NAMESPACE", [document.uri.path]);
+                        break;
+                }
+            }
         }
     }), vscode_1.workspace.onDidChangeConfiguration((event) => {
         (0, support_1.scanFiles)("LANG_NAMESPACE");
